@@ -75,6 +75,11 @@ public struct PatternTokenizer {
 
 extension PatternTokenizer {
   public struct Pattern {
+    public init(regex: Regex<(Substring, Substring)>, tokenType: PatternTokenizer.TokenType) {
+      self.regex = regex
+      self.tokenType = tokenType
+    }
+    
     public let regex: Regex<(Substring, Substring)>
     public let tokenType: TokenType
   }
