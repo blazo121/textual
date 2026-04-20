@@ -144,6 +144,8 @@ extension StructuredText {
   ///   - markdown: The Markdown source to render.
   ///   - baseURL: A base URL used to resolve relative links and image URLs.
   ///   - syntaxExtensions: Custom syntax extensions applied after markdown parsing.
+  ///   - softBreakMode: Controls whether single line endings inside paragraphs render as spaces
+  ///     or actual line breaks.
   ///
   /// Math expressions are supported when you include `.math` in `syntaxExtensions`:
   ///
@@ -156,13 +158,15 @@ extension StructuredText {
   public init(
     markdown: String,
     baseURL: URL? = nil,
-    syntaxExtensions: [AttributedStringMarkdownParser.SyntaxExtension] = []
+    syntaxExtensions: [AttributedStringMarkdownParser.SyntaxExtension] = [],
+    softBreakMode: AttributedStringMarkdownParser.SoftBreakMode = .spaces
   ) {
     self.init(
       markdown,
       parser: .markdown(
         baseURL: baseURL,
-        syntaxExtensions: syntaxExtensions
+        syntaxExtensions: syntaxExtensions,
+        softBreakMode: softBreakMode
       )
     )
   }
