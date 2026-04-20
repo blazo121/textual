@@ -12,7 +12,7 @@ import Foundation
 // This tokenizer is intentionally conservative: patterns are opt-in and processing is linear. If
 // no patterns are provided, the input is returned as a single `.text` token.
 
-struct PatternTokenizer {
+public struct PatternTokenizer {
   private let patterns: [Pattern]
 
   init(patterns: [Pattern]) {
@@ -74,9 +74,14 @@ struct PatternTokenizer {
 }
 
 extension PatternTokenizer {
-  struct Pattern {
-    let regex: Regex<(Substring, Substring)>
-    let tokenType: TokenType
+  public struct Pattern {
+    public init(regex: Regex<(Substring, Substring)>, tokenType: PatternTokenizer.TokenType) {
+      self.regex = regex
+      self.tokenType = tokenType
+    }
+    
+    public let regex: Regex<(Substring, Substring)>
+    public let tokenType: TokenType
   }
 }
 
@@ -95,15 +100,15 @@ extension PatternTokenizer.Pattern {
 }
 
 extension PatternTokenizer {
-  struct Token: Hashable, Sendable {
-    let type: TokenType
-    var content: String
-    var capturedContent: String?
+  public struct Token: Hashable, Sendable {
+    public let type: TokenType
+    public var content: String
+    public var capturedContent: String?
   }
 }
 
 extension PatternTokenizer {
-  struct TokenType: Hashable, RawRepresentable, Sendable, ExpressibleByStringLiteral {
+  public struct TokenType: Hashable, RawRepresentable, Sendable, ExpressibleByStringLiteral {
     public let rawValue: String
 
     public init(rawValue: String) {

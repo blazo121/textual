@@ -55,7 +55,8 @@ struct TextFragment<Content: AttributedStringProtocol>: View {
   }
 }
 
-struct TextFragmentAttribute: TextAttribute {
+public struct TextFragmentAttribute: TextAttribute {
+  public init() {}
 }
 
 extension Text.Layout {

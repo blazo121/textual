@@ -3,8 +3,13 @@ import Foundation
 extension AttributedStringMarkdownParser {
   /// A syntax extension that replaces matched tokens after Markdown parsing.
   public struct SyntaxExtension {
-    let patterns: [PatternTokenizer.Pattern]
-    let replace:
+    public init(patterns: [PatternTokenizer.Pattern], replace: @escaping (PatternTokenizer.Token, AttributeContainer) -> AttributedString?) {
+      self.patterns = patterns
+      self.replace = replace
+    }
+    
+    public let patterns: [PatternTokenizer.Pattern]
+    public let replace:
       (
         _ token: PatternTokenizer.Token,
         _ attributes: AttributeContainer

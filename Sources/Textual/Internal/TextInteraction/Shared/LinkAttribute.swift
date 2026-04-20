@@ -1,9 +1,9 @@
 import SwiftUI
 
-struct LinkAttribute: TextAttribute {
+public struct LinkAttribute: TextAttribute {
   var url: URL
 
-  init(_ url: URL) {
+  public init(_ url: URL) {
     self.url = url
   }
 }
