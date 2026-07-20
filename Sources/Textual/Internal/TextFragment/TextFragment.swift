@@ -51,7 +51,15 @@ struct TextFragment<Content: AttributedStringProtocol>: View {
   }
 
   private var text: Text {
-    textBuilder?.text ?? Text(verbatim: "")
+    if let textBuilder {
+      return textBuilder.text
+    }
+
+    // The builder is installed by `onChange(initial: true)`, which only runs during the
+    // SwiftUI update cycle. Out-of-band measurement (`UIHostingController.sizeThatFits(in:)`)
+    // evaluates the body before that, so build the Text inline for the first pass instead
+    // of returning an empty placeholder — otherwise measured heights are zero.
+    return TextBuilder(content, environment: textEnvironment).text
   }
 }
 

@@ -33,7 +33,11 @@ struct WithInlineStyle<Content: View>: View {
   }
 
   var body: some View {
-    content(output ?? AttributedString())
+    // `output` is only populated by `onChange(initial: true)` during the SwiftUI update
+    // cycle. Out-of-band measurement (`UIHostingController.sizeThatFits(in:)`) evaluates
+    // the body before that, so style the input inline for the first pass instead of
+    // rendering an empty string — otherwise measured heights are zero.
+    content(output ?? Self.resolved(attributedString: input, style: style, in: environment))
       .onChange(of: Tuple(input, style, environment), initial: true) { _, newValue in
         resolve(
           attributedString: newValue.values.0,
@@ -48,6 +52,14 @@ struct WithInlineStyle<Content: View>: View {
     style: InlineStyle,
     in environment: TextEnvironmentValues
   ) {
+    self.output = Self.resolved(attributedString: attributedString, style: style, in: environment)
+  }
+
+  private static func resolved(
+    attributedString: AttributedString,
+    style: InlineStyle,
+    in environment: TextEnvironmentValues
+  ) -> AttributedString {
     var output = attributedString
 
     for run in attributedString.runs {
@@ -78,6 +90,6 @@ struct WithInlineStyle<Content: View>: View {
       output[run.range].mergeAttributes(attributes, mergePolicy: .keepNew)
     }
 
-    self.output = output
+    return output
   }
 }

@@ -113,6 +113,11 @@ public struct StructuredText: View {
   public init(_ markup: String, parser: any MarkupParser) {
     self.markup = markup
     self.parser = parser
+    // Parse synchronously so content is present on the very first layout pass. Parsing
+    // only in `onChange(initial: true)` leaves the state empty until the SwiftUI update
+    // cycle runs, which makes out-of-band measurement
+    // (`UIHostingController.sizeThatFits(in:)`) return zero height.
+    self._attributedString = State(initialValue: (try? parser.attributedString(for: markup)) ?? .init())
   }
 
   public var body: some View {
@@ -122,7 +127,7 @@ public struct StructuredText: View {
         .modifier(TextSelectionCoordination())
     }
     .coordinateSpace(.textContainer)
-    .onChange(of: markup, initial: true) {
+    .onChange(of: markup) {
       markupDidChange(markup)
     }
     // Disable line limit to avoid per-fragment truncation

@@ -108,6 +108,9 @@ public struct InlineText: View {
   public init(_ markup: String, parser: any MarkupParser) {
     self.markup = markup
     self.parser = parser
+    // Parse synchronously so content is present on the very first layout pass — see
+    // StructuredText.init for the rationale (out-of-band measurement support).
+    self._attributedString = State(initialValue: (try? parser.attributedString(for: markup)) ?? .init())
   }
 
   public var body: some View {
