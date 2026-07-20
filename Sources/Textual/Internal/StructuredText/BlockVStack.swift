@@ -21,14 +21,44 @@ extension StructuredText {
 
     var body: some View {
       Group(subviews: content) { children in
+        // Blocks that nest their content behind another container (lists, block quotes)
+        // can't surface a seed — container values don't cross container boundaries the
+        // way preferences do. Their rendered spacing is the union of their descendants'
+        // preferences, and those same block kinds typically also occur as siblings, so
+        // the union of the siblings' seeds is the best synchronous stand-in.
+        let fallbackSeed = combinedSpacingSeed(of: children)
         BlockVStackLayout(textAlignment: textAlignment) {
           ForEach(children) {
-            BlockLayoutView($0)
+            BlockLayoutView($0, spacingSeed: $0.containerValues.blockSpacingSeed ?? fallbackSeed)
           }
         }
+        // Republish the children's combined seed so nested stacks that are NOT hidden
+        // behind another container still surface a first-pass spacing to THEIR enclosing
+        // stack, mirroring how the `BlockSpacingKey` preference unions while bubbling up.
+        .containerValue(\.blockSpacingSeed, fallbackSeed)
       }
     }
+
+    private func combinedSpacingSeed(of children: SubviewsCollection) -> BlockSpacing? {
+      let seeds = children.compactMap(\.containerValues.blockSpacingSeed)
+      guard !seeds.isEmpty else {
+        return nil
+      }
+      return seeds.reduce(BlockSpacing()) { $0.union($1) }
+    }
   }
+}
+
+extension ContainerValues {
+  /// Synchronous first-pass copy of the block spacing preference.
+  ///
+  /// `BlockLayoutView` bridges the `BlockSpacingKey` preference into a layout value via
+  /// `onPreferenceChange` + `@State`, which only delivers during the SwiftUI update cycle.
+  /// Out-of-band measurement (`UIHostingController.sizeThatFits(in:)`) lays out before that,
+  /// so the layout would use default spacing and under-measure. The `blockSpacing` modifiers
+  /// also publish the value as a container value, which `Group(subviews:)` exposes
+  /// synchronously, so the very first layout pass already uses the correct spacing.
+  @Entry var blockSpacingSeed: StructuredText.BlockSpacing? = nil
 }
 
 extension StructuredText {
@@ -40,12 +70,14 @@ extension StructuredText {
     @Environment(\.listItemSpacingEnabled) private var listItemSpacingEnabled
     @Environment(\.resolvedListItemSpacing) private var resolvedListItemSpacing
 
-    @State private var blockSpacing = BlockSpacing()
+    @State private var blockSpacing: BlockSpacing?
 
     private let content: Content
+    private let spacingSeed: BlockSpacing?
 
-    init(_ content: Content) {
+    init(_ content: Content, spacingSeed: BlockSpacing? = nil) {
       self.content = content
+      self.spacingSeed = spacingSeed
     }
 
     var body: some View {
@@ -55,7 +87,12 @@ extension StructuredText {
           // Override with the resolved list item spacing if enabled
           blockSpacing = listItemSpacingEnabled ? resolvedListItemSpacing : value
         }
-        .layoutValue(key: BlockSpacingKey.self, value: blockSpacing)
+        .layoutValue(key: BlockSpacingKey.self, value: blockSpacing ?? firstPassSpacing)
+    }
+
+    /// Spacing used until the preference arrives — see `ContainerValues.blockSpacingSeed`.
+    private var firstPassSpacing: BlockSpacing {
+      listItemSpacingEnabled ? resolvedListItemSpacing : (spacingSeed ?? BlockSpacing())
     }
   }
 

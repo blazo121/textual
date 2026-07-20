@@ -17,7 +17,11 @@ extension View {
 extension TextualNamespace where Base: View {
   /// Sets the spacing above and below the current block.
   @MainActor public func blockSpacing(_ blockSpacing: StructuredText.BlockSpacing) -> some View {
-    base.preference(key: StructuredText.BlockSpacingKey.self, value: blockSpacing)
+    base
+      .preference(key: StructuredText.BlockSpacingKey.self, value: blockSpacing)
+      // Synchronous first-pass copy for out-of-band measurement — see
+      // `ContainerValues.blockSpacingSeed`.
+      .containerValue(\.blockSpacingSeed, blockSpacing)
   }
 
   /// Sets the spacing above and below the current block using a font-relative value.
@@ -25,7 +29,11 @@ extension TextualNamespace where Base: View {
     _ blockSpacing: FontScaled<StructuredText.BlockSpacing>
   ) -> some View {
     WithFontScaledValue(blockSpacing) { blockSpacing in
-      base.preference(key: StructuredText.BlockSpacingKey.self, value: blockSpacing)
+      base
+        .preference(key: StructuredText.BlockSpacingKey.self, value: blockSpacing)
+        // Synchronous first-pass copy for out-of-band measurement — see
+        // `ContainerValues.blockSpacingSeed`.
+        .containerValue(\.blockSpacingSeed, blockSpacing)
     }
   }
 
