@@ -96,6 +96,7 @@ extension TextualNamespace where Base: View {
       GeometryReader { geometry in
         content(.init(values, geometry: geometry))
       }
+      .allowsHitTesting(false)
     }
   }
 
@@ -110,6 +111,7 @@ extension TextualNamespace where Base: View {
       GeometryReader { geometry in
         content(.init(values, geometry: geometry))
       }
+      .allowsHitTesting(false)
     }
   }
 

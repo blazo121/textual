@@ -52,6 +52,7 @@ LANGUAGES=(
   "kotlin"
   "scala"
   "groovy"
+  "clojure"
 
   # .NET ecosystem
   "csharp"
@@ -70,6 +71,10 @@ LANGUAGES=(
   "haskell"
   "ocaml"
   "reason"
+
+  # Lisp dialects
+  "lisp"
+  "scheme"
 
   # Modern languages
   "dart"

@@ -1,4 +1,4 @@
-#if TEXTUAL_ENABLE_TEXT_SELECTION && canImport(AppKit)
+#if TEXTUAL_ENABLE_TEXT_SELECTION && canImport(AppKit) && !targetEnvironment(macCatalyst)
   import SwiftUI
 
   // MARK: - Overview
@@ -17,6 +17,7 @@
 
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
 
     private var dragStart: TextPosition?
     private var selectionAnchor: TextPosition?
