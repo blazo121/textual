@@ -26,6 +26,9 @@ Every version — including rejected ones — is documented.
 | [02](02-tokenizer-final.md) | Tokenizer: cache attempt | rejected (regression) |
 | [03](03-codetokenizer.md) | Prism/JSCore highlighter | rejected (bridge not the bottleneck) |
 | [04](04-expand-pipeline.md) | expand: prefilter + fast path | **1.1× hit / 10.9× no-trigger (shipped)** |
+| [05](05-block-building-baseline.md) | block-building baseline | root-cause: per-para Set alloc |
+| [06](06-block-building-results.md) | isMathBlock + BlockRuns | **2.4× / 1.5× (shipped)** |
+| [07](07-parse-memoization.md) | StructuredText reparse-on-init | **~2300× warm repeated init (shipped)** |
 
 ## Shipped optimizations (behavior-preserving)
 
@@ -46,6 +49,26 @@ Every version — including rejected ones — is documented.
 
 4. **Precomputed token-type → extension map** — removes a per-token array
    allocation in the hot loop.
+
+## Round 2 (2026-07-21) — block-building + reparse elimination
+
+5. **`isMathBlock` early-exit** — stop allocating a `Set<AnyAttachment>` per
+   paragraph; single run scan with early exits. **2.44×** on the per-paragraph
+   probe, **1.49×** on the full recursive block walk.
+
+6. **`BlockRuns` contiguous ranges** — store each boundary's lower bound instead
+   of retaining the runs collection and re-subscripting it; derive block ranges
+   in O(1) with no runs access.
+
+7. **Parse memoization (biggest real-world win)** — `StructuredText.init`
+   reparsed the *same* markup on every SwiftUI re-instantiation
+   (`State(initialValue:)` is eager). Added a correctness-safe, main-actor,
+   bounded cache to `AttributedStringMarkdownParser`, keyed by a config
+   fingerprint + exact input, enabled only when the configuration is fully
+   known and there are no (unfingerprintable) syntax extensions. Warm repeated
+   init drops from **2.31 ms → 0.001 ms**. Cross-contamination across
+   soft-break mode / baseURL / inline-vs-block is tested and impossible by key
+   construction.
 
 ## Investigated & rejected (negative results, documented)
 
