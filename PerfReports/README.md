@@ -29,6 +29,11 @@ Every version — including rejected ones — is documented.
 | [05](05-block-building-baseline.md) | block-building baseline | root-cause: per-para Set alloc |
 | [06](06-block-building-results.md) | isMathBlock + BlockRuns | **2.4× / 1.5× (shipped)** |
 | [07](07-parse-memoization.md) | StructuredText reparse-on-init | **~2300× warm repeated init (shipped)** |
+| [08](08-segmentation-cache-rejected.md) | block-segmentation cache | rejected (index hazard, modest gain) |
+| [09](09-foundation-parse-and-incremental.md) | Foundation parse + streaming | irreducible parse; streaming rejected (over-engineered for chat scale) |
+| [10](10-chat-usage-caches.md) | message-list usage (simulator) | **CodeTokenizer cache ~1370× scrollback; parse cache 64→256 (shipped)** |
+| [11](11-textbuilder-coalescing.md) | TextBuilder run coalescing | **7.7× fewer Text values/render; pixel-identical (on-device validated, shipped)** |
+| [12](12-render-path-survey.md) | render-path survey | no safe high-ROI win left; AnyView structural; biggest lever is app-side |
 
 ## Shipped optimizations (behavior-preserving)
 

@@ -98,7 +98,10 @@ public struct AttributedStringMarkdownParser: MarkupParser {
   // is `@MainActor`, so no additional synchronization is required.
   @MainActor private static let cache: NSCache<NSString, Box<AttributedString>> = {
     let cache = NSCache<NSString, Box<AttributedString>>()
-    cache.countLimit = 64
+    // Sized for scrollback in long message lists (chat feeds), where each
+    // distinct message is parsed once and re-visited while scrolling. NSCache
+    // still evicts under memory pressure regardless of this count.
+    cache.countLimit = 256
     return cache
   }()
 
