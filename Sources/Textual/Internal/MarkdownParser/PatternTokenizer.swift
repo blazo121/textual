@@ -15,8 +15,25 @@ import Foundation
 public struct PatternTokenizer {
   private let patterns: [Pattern]
 
+  // Union of the trigger characters across all patterns, used as a cheap
+  // prefilter: a match is impossible unless the input contains at least one
+  // trigger. Only enabled when *every* pattern declares triggers — otherwise a
+  // pattern with no declared trigger could match anywhere and the prefilter
+  // would be unsound, so it is disabled (`nil`).
+  private let triggers: Set<Character>?
+
+  /// The union of trigger characters when every pattern declares them, else
+  /// `nil`. Callers can use this to short-circuit whole inputs that contain no
+  /// trigger (see `PatternProcessor`).
+  var triggerCharacters: Set<Character>? { triggers }
+
   init(patterns: [Pattern]) {
     self.patterns = patterns
+    if !patterns.isEmpty, patterns.allSatisfy({ !$0.triggers.isEmpty }) {
+      self.triggers = patterns.reduce(into: Set<Character>()) { $0.formUnion($1.triggers) }
+    } else {
+      self.triggers = nil
+    }
   }
 
   func tokenize(_ input: String) throws -> [Token] {
@@ -24,78 +41,118 @@ public struct PatternTokenizer {
       return [.init(type: .text, content: input)]
     }
 
+    // Prefilter: if no trigger character occurs in the input, no pattern can
+    // match, so skip the regex scan entirely. This is the common case for
+    // prose runs that contain neither `:` (emoji) nor `$` (math).
+    if let triggers, !input.contains(where: triggers.contains) {
+      return [.init(type: .text, content: input)]
+    }
+
     var tokens: [Token] = []
-    var currentIndex = input.startIndex
+    var cursor = input.startIndex
 
-    while currentIndex < input.endIndex {
-      var matchFound = false
+    while cursor < input.endIndex {
+      // Find the earliest match among all patterns in the remaining slice.
+      //
+      // This preserves the original priority semantics: at a given start
+      // position, the first pattern (lowest index) wins. Because we iterate
+      // patterns in order and only replace `best` on a *strictly* earlier
+      // start, ties at the same position keep the lower-indexed pattern.
+      let slice = input[cursor...]
+      var best:
+        (
+          start: String.Index, patternIndex: Int, full: Substring, captured: Substring,
+          upper: String.Index
+        )?
 
-      // Try each pattern at the current position
-      for pattern in patterns {
-        guard let match = try pattern.regex.prefixMatch(in: input[currentIndex...]) else {
+      for (index, pattern) in patterns.enumerated() {
+        guard let match = try pattern.regex.firstMatch(in: slice) else {
           continue
         }
-
-        // Add any text before the match
-        if currentIndex < match.range.lowerBound {
-          let markup = String(input[currentIndex..<match.range.lowerBound])
-          tokens.append(.init(type: .text, content: markup))
+        let start = match.range.lowerBound
+        if best == nil || start < best!.start {
+          best = (start, index, match.output.0, match.output.1, match.range.upperBound)
         }
+        // The earliest possible start is the cursor itself; nothing a
+        // later (lower-priority) pattern finds can beat it.
+        if best!.start == cursor {
+          break
+        }
+      }
 
-        tokens.append(
-          .init(
-            type: pattern.tokenType,
-            content: String(match.0),
-            capturedContent: String(match.1)
-          )
-        )
-
-        currentIndex = match.range.upperBound
-        matchFound = true
+      guard let match = best else {
+        // No pattern matches anywhere in the remaining slice: the rest is text.
+        appendText(&tokens, String(slice))
         break
       }
 
-      if !matchFound {
-        // Append or create text
-        let nextIndex = input.index(after: currentIndex)
-        let content = String(input[currentIndex])
-
-        if let last = tokens.indices.last, tokens[last].type == .text {
-          tokens[last].content += content
-        } else {
-          tokens.append(.init(type: .text, content: content))
-        }
-        currentIndex = nextIndex
+      // Emit the gap before the match as a single text token.
+      if cursor < match.start {
+        appendText(&tokens, String(input[cursor..<match.start]))
       }
+
+      tokens.append(
+        .init(
+          type: patterns[match.patternIndex].tokenType,
+          content: String(match.full),
+          capturedContent: String(match.captured)
+        )
+      )
+
+      // Guard against a hypothetical zero-width match to avoid an infinite loop.
+      cursor = match.upper > match.start ? match.upper : input.index(after: match.start)
     }
 
     return tokens
+  }
+
+  private func appendText(_ tokens: inout [Token], _ content: String) {
+    if let last = tokens.indices.last, tokens[last].type == .text {
+      tokens[last].content += content
+    } else {
+      tokens.append(.init(type: .text, content: content))
+    }
   }
 }
 
 extension PatternTokenizer {
   public struct Pattern {
     public init(regex: Regex<(Substring, Substring)>, tokenType: PatternTokenizer.TokenType) {
+      self.init(regex: regex, tokenType: tokenType, triggers: [])
+    }
+
+    /// Creates a pattern with a set of *trigger* characters: characters without
+    /// which the regex cannot possibly match. When every pattern in a tokenizer
+    /// declares triggers, the tokenizer skips the regex scan for any input that
+    /// contains none of them. Pass an empty set (the default) to disable this
+    /// prefilter for the pattern.
+    public init(
+      regex: Regex<(Substring, Substring)>,
+      tokenType: PatternTokenizer.TokenType,
+      triggers: Set<Character>
+    ) {
       self.regex = regex
       self.tokenType = tokenType
+      self.triggers = triggers
     }
-    
+
     public let regex: Regex<(Substring, Substring)>
     public let tokenType: TokenType
+    public let triggers: Set<Character>
   }
 }
 
 extension PatternTokenizer.Pattern {
   static var emoji: Self {
-    .init(regex: /:([a-zA-Z0-9_+-]+):/, tokenType: .emoji)
+    .init(regex: /:([a-zA-Z0-9_+-]+):/, tokenType: .emoji, triggers: [":"])
   }
 
   static var mathBlock: Self {
-    .init(regex: /(?s)\$\$(.+?)\$\$/, tokenType: .mathBlock)
+    .init(regex: /(?s)\$\$(.+?)\$\$/, tokenType: .mathBlock, triggers: ["$"])
   }
 
   static var mathInline: Self {
-    .init(regex: /\$(?!\$)((?:\\\$|[^$\n])+)\$/, tokenType: .mathInline)
+    .init(regex: /\$(?!\$)((?:\\\$|[^$\n])+)\$/, tokenType: .mathInline, triggers: ["$"])
   }
 }
 
