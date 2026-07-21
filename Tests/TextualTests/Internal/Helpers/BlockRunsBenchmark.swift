@@ -63,6 +63,37 @@ struct BlockRunsBenchmark {
     try AttributedStringMarkdownParser.markdown().attributedString(for: document)
   }
 
+  // Decides whether a content-keyed cache can beat recomputation: a cache
+  // lookup must hash the content, so if hashing costs as much as computing
+  // blockRuns, caching cannot win. Compares recompute vs the key-building work.
+  @MainActor @Test func cacheKeyVsRecompute() throws {
+    let parsed = try Self.parsed()
+    let sub = parsed[parsed.startIndex..<parsed.endIndex]
+
+    let recompute = try Self.measure(iterations: 50) {
+      _ = sub.blockRuns().count
+    }
+
+    // Cost of the cheapest correct identity key: hashing the content value.
+    let hashKey = try Self.measure(iterations: 50) {
+      var hasher = Hasher()
+      hasher.combine(AttributedString(sub))
+      _ = hasher.finalize()
+    }
+
+    // Cost of hashing just the flattened characters (weaker key candidate).
+    let hashChars = try Self.measure(iterations: 50) {
+      var hasher = Hasher()
+      hasher.combine(String(sub.characters[...]))
+      _ = hasher.finalize()
+    }
+
+    print(
+      String(
+        format: "BENCH cacheKeyVsRecompute recompute=%.3fms hashValue=%.3fms hashChars=%.3fms",
+        recompute, hashKey, hashChars))
+  }
+
   @MainActor @Test func topLevelBlockRuns() throws {
     let parsed = try Self.parsed()
     var count = 0
