@@ -24,6 +24,18 @@ struct CodeToken: Hashable, Sendable {
     private let context: JSContext
     private let logger = Logger(category: .codeTokenizer)
 
+    // Memoizes tokenization results. Prism-over-JavaScriptCore tokenization is
+    // ~12 ms per code block, and identical blocks recur as a message list is
+    // scrolled away and back (each re-mount restarts `.task(id: content)`).
+    // Tokenization is deterministic in (code, language), so caching is safe.
+    private struct CacheKey: Hashable {
+      let code: String
+      let language: String
+    }
+    private var cache: [CacheKey: [CodeToken]] = [:]
+    private var cacheOrder: [CacheKey] = []
+    private let cacheLimit = 256
+
     static let shared = CodeTokenizer()
 
     init?() {
@@ -48,6 +60,17 @@ struct CodeToken: Hashable, Sendable {
     }
 
     func tokenize(code: String, language: String) -> [CodeToken] {
+      let key = CacheKey(code: code, language: language)
+      if let cached = cache[key] {
+        return cached
+      }
+
+      let tokens = runTokenizer(code: code, language: language)
+      store(tokens, for: key)
+      return tokens
+    }
+
+    private func runTokenizer(code: String, language: String) -> [CodeToken] {
       guard
         let tokenizeCode = context.objectForKeyedSubscript("tokenizeCode"),
         let result = tokenizeCode.call(withArguments: [code, language]),
@@ -65,6 +88,15 @@ struct CodeToken: Hashable, Sendable {
           return nil
         }
         return CodeToken(content: content, type: .init(rawValue: type))
+      }
+    }
+
+    private func store(_ tokens: [CodeToken], for key: CacheKey) {
+      cache[key] = tokens
+      cacheOrder.append(key)
+      if cacheOrder.count > cacheLimit {
+        let evicted = cacheOrder.removeFirst()
+        cache[evicted] = nil
       }
     }
   }

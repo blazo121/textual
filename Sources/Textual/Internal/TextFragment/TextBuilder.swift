@@ -64,9 +64,29 @@ extension Text {
     attachmentSizes: [AttachmentKey: CGSize],
     in environment: TextEnvironmentValues
   ) {
-    let textValues = attributedString.runs.map { run in
-      var text: Text
+    // Runs that need per-run Text identity are attachments (rendered as sized
+    // placeholders tagged with `AttachmentAttribute`) and links (tagged with
+    // `LinkAttribute` for `TextLinkInteraction`). Every other run only carries
+    // styling — bold, italic, code font, foreground/background color — which a
+    // single `Text(AttributedString(_:))` renders natively across many runs.
+    //
+    // So instead of one `Text` per run (which, for a heavily inline-formatted
+    // message, means dozens of `Text` values and sub-`AttributedString`
+    // allocations rebuilt on every body evaluation), coalesce each maximal span
+    // of plain styled runs into one `Text` and emit only attachment/link runs
+    // individually.
+    var result = Text(verbatim: "")
+    var pendingLowerBound: AttributedString.Index?
+    var pendingUpperBound: AttributedString.Index?
 
+    func flushPending() {
+      guard let lower = pendingLowerBound, let upper = pendingUpperBound else { return }
+      result = result + Text(AttributedString(attributedString[lower..<upper]))
+      pendingLowerBound = nil
+      pendingUpperBound = nil
+    }
+
+    for run in attributedString.runs {
       var runEnvironment = environment
       runEnvironment.font = run.font ?? environment.font
 
@@ -75,8 +95,8 @@ extension Text {
       }
 
       if let key, let size = attachmentSizes[key] {
-        // Create placeholder
-        text = Text(placeholderSize: size)
+        flushPending()
+        var text = Text(placeholderSize: size)
           .baselineOffset(key.attachment.baselineOffset(in: runEnvironment))
           .customAttribute(
             AttachmentAttribute(
@@ -84,21 +104,27 @@ extension Text {
               presentationIntent: run.presentationIntent
             )
           )
+        if let link = run.link {
+          text = text.customAttribute(LinkAttribute(link))
+        }
+        result = result + text
+      } else if let link = run.link {
+        flushPending()
+        result =
+          result
+          + Text(AttributedString(attributedString[run.range]))
+          .customAttribute(LinkAttribute(link))
       } else {
-        text = Text(AttributedString(attributedString[run.range]))
+        // Plain styled run: extend the pending span instead of emitting a Text.
+        if pendingLowerBound == nil {
+          pendingLowerBound = run.range.lowerBound
+        }
+        pendingUpperBound = run.range.upperBound
       }
-
-      // Add link attribute for TextLinkInteraction
-      if let link = run.link {
-        text = text.customAttribute(LinkAttribute(link))
-      }
-
-      return text
     }
+    flushPending()
 
-    self = textValues.reduce(Text(verbatim: "")) { partialResult, text in
-      partialResult + text
-    }
+    self = result
   }
 
   private init(placeholderSize size: CGSize) {

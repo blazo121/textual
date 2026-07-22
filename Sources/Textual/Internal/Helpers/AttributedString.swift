@@ -2,11 +2,26 @@ import Foundation
 
 extension AttributedStringProtocol {
   var isMathBlock: Bool {
-    let attachments = self.attachments()
+    // A math block is a paragraph whose only content is a single block-math
+    // attachment. Scan the runs once with early exits instead of building a
+    // `Set<AnyAttachment>` (the old `attachments().count == 1` path allocated a
+    // set for every paragraph, including the common attachment-free case).
+    var unique: AnyAttachment?
+    for run in runs {
+      guard let attachment = run.attributes.textual.attachment else {
+        continue
+      }
+      if let unique {
+        if attachment != unique {
+          return false  // more than one distinct attachment
+        }
+      } else {
+        unique = attachment
+      }
+    }
 
     guard
-      attachments.count == 1,
-      let attachment = attachments.first?.base as? MathAttachment,
+      let attachment = unique?.base as? MathAttachment,
       case .block = attachment.displayStyle
     else {
       return false
@@ -73,37 +88,43 @@ extension AttributedString {
       let range: Range<AttributedString.Index>
     }
 
-    private struct Boundary: Equatable {
-      let index: AttributedString.Runs.Index
+    private struct Boundary {
       let intent: PresentationIntent.IntentType?
+      let lowerBound: AttributedString.Index
     }
 
     typealias Element = BlockRun
     typealias Index = Int
 
-    private let runs: AttributedString.Runs
     private let boundaries: [Boundary]
+    // Upper bound of the final block (the content's end index). Blocks are
+    // contiguous, so every other block's upper bound is the next boundary's
+    // lower bound; only the last one needs to be remembered separately.
+    private let contentEnd: AttributedString.Index
 
     init(
       attributedString: some AttributedStringProtocol,
       parent: PresentationIntent.IntentType?
     ) {
-      self.runs = attributedString.runs
-
       var boundaries: [Boundary] = []
       var lastIntent: PresentationIntent.IntentType?
 
-      for index in runs.indices {
-        let intent = runs[index].presentationIntent?.intent(before: parent)
+      // Iterate the runs sequentially (no index re-subscripting) and record a
+      // boundary at the first run and wherever the block-level intent changes.
+      // Storing each boundary's lower bound lets `subscript` derive block ranges
+      // without touching the runs collection again. Runs partition the whole
+      // content, so the final block ends at the content's end index.
+      for run in attributedString.runs {
+        let intent = run.presentationIntent?.intent(before: parent)
 
-        // Record first run or whenever the intent changes (including nil values)
         if boundaries.isEmpty || intent != lastIntent {
-          boundaries.append(.init(index: index, intent: intent))
+          boundaries.append(.init(intent: intent, lowerBound: run.range.lowerBound))
           lastIntent = intent
         }
       }
 
       self.boundaries = boundaries
+      self.contentEnd = attributedString.endIndex
     }
 
     var startIndex: Index { boundaries.startIndex }
@@ -119,15 +140,12 @@ extension AttributedString {
 
     subscript(position: Index) -> BlockRun {
       let boundary = boundaries[position]
-      let nextRunIndex =
+      let upperBound =
         (position + 1 < boundaries.count)
-        ? boundaries[position + 1].index
-        : runs.endIndex
-      let lastRunIndex = runs.index(before: nextRunIndex)
-      let lowerBound = runs[boundary.index].range.lowerBound
-      let upperBound = runs[lastRunIndex].range.upperBound
+        ? boundaries[position + 1].lowerBound
+        : contentEnd
 
-      return BlockRun(intent: boundary.intent, range: lowerBound..<upperBound)
+      return BlockRun(intent: boundary.intent, range: boundary.lowerBound..<upperBound)
     }
   }
 }

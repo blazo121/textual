@@ -15,15 +15,40 @@ extension AttributedStringMarkdownParser {
   struct PatternProcessor {
     private let syntaxExtensions: [SyntaxExtension]
     private let tokenizer: PatternTokenizer
+    // Token type -> the first extension that owns it. Precomputed so the hot
+    // loop does a dictionary lookup instead of scanning + allocating per token.
+    private let extensionsByTokenType: [PatternTokenizer.TokenType: SyntaxExtension]
 
     init(syntaxExtensions: [SyntaxExtension]) {
       self.syntaxExtensions = syntaxExtensions
       self.tokenizer = PatternTokenizer(patterns: syntaxExtensions.flatMap(\.patterns))
+
+      var map: [PatternTokenizer.TokenType: SyntaxExtension] = [:]
+      for syntaxExtension in syntaxExtensions {
+        for pattern in syntaxExtension.patterns where map[pattern.tokenType] == nil {
+          map[pattern.tokenType] = syntaxExtension
+        }
+      }
+      self.extensionsByTokenType = map
     }
 
     func expand(_ attributedString: AttributedString) throws -> AttributedString {
       guard !syntaxExtensions.isEmpty else {
         return attributedString
+      }
+
+      // Whole-document fast path: when every pattern declares trigger
+      // characters and none occurs anywhere in the text, no replacement is
+      // possible, so return the input untouched and skip the rebuild entirely.
+      //
+      // The scan runs over a flattened `String` rather than
+      // `AttributedString.characters`, whose per-element traversal is an order
+      // of magnitude slower (it walks attribute storage for every character).
+      if let triggers = tokenizer.triggerCharacters {
+        let flattened = String(attributedString.characters[...])
+        if !flattened.contains(where: triggers.contains) {
+          return attributedString
+        }
       }
 
       var output = AttributedString()
@@ -40,7 +65,7 @@ extension AttributedStringMarkdownParser {
             output.append(attributedString[run.range])
           } else {
             for token in tokens {
-              if let syntaxExtension = syntaxExtensions.firstMatching(token.type),
+              if let syntaxExtension = extensionsByTokenType[token.type],
                 let replacement = syntaxExtension.replace(token, run.attributes)
               {
                 output.append(replacement)
